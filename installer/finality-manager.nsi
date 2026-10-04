@@ -4,16 +4,16 @@
 ; or directly: makensis -DBUNDLE_DIR=... -DOUTFILE=... -DAPP_VERSION=... \
 ;                       -DAPP_ICON=... installer/finality-manager.nsi
 ;
-; The bundle directory (build-windows/bundle) is created by `make bundle-windows`
+; The bundle directory (build/windows/bundle) is created by `make bundle-windows`
 ; and already contains the executable plus the full GTK4 runtime.
 
 Unicode true
 
 !ifndef BUNDLE_DIR
-  !define BUNDLE_DIR "build-windows\bundle"
+  !define BUNDLE_DIR "build\windows\bundle"
 !endif
 !ifndef OUTFILE
-  !define OUTFILE "build-windows\Finality-Manager-Setup.exe"
+  !define OUTFILE "build\windows\Finality-Manager-Setup.exe"
 !endif
 !ifndef APP_VERSION
   !define APP_VERSION "1.0.0"

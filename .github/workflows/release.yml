@@ -1,0 +1,109 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version to build (without leading v)"
+        required: false
+        default: "0.0.0"
+
+permissions:
+  contents: write
+
+jobs:
+  linux:
+    name: Linux AppImage
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential pkg-config libgtk-4-dev libfuse2 file wget
+
+      - name: Install appimagetool
+        run: |
+          wget -q -O /usr/local/bin/appimagetool \
+            https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
+          chmod +x /usr/local/bin/appimagetool
+
+      - name: Build AppImage
+        run: make app-image
+
+      - name: Upload AppImage artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-appimage
+          path: build/appImage/Finality-Manager-x86_64.AppImage
+          if-no-files-found: error
+
+  windows:
+    name: Windows installer
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up MSYS2
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            make
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-pkgconf
+            mingw-w64-ucrt-x86_64-gtk4
+            mingw-w64-ucrt-x86_64-nsis
+
+      - name: Resolve version
+        id: version
+        shell: msys2 {0}
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "version=${{ github.event.inputs.version }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build installer
+        shell: msys2 {0}
+        run: |
+          make nsis APP_VERSION=${{ steps.version.outputs.version }} \
+            WINDOWS_SYSROOT=/ucrt64 \
+            WINDOWS_PKGCONFIG_LIBDIR=/ucrt64/lib/pkgconfig:/ucrt64/share/pkgconfig
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-windows
+          path: build/windows/Finality-Manager-Setup.exe
+          if-no-files-found: error
+
+  publish:
+    name: Publish release
+    needs: [linux, windows]
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: List artifacts
+        run: ls -lh dist
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/Finality-Manager-x86_64.AppImage
+            dist/Finality-Manager-Setup.exe
+          generate_release_notes: true

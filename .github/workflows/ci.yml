@@ -1,0 +1,106 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux:
+    name: Linux build & test
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential pkg-config libgtk-4-dev
+
+      - name: Build
+        run: make
+
+      - name: Run tests
+        run: make test
+
+      - name: Upload Linux binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: finality-manager-linux
+          path: build/linux/finality-manager
+          if-no-files-found: error
+
+  appimage:
+    name: Linux AppImage
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential pkg-config libgtk-4-dev libfuse2 file wget
+
+      - name: Install appimagetool
+        run: |
+          wget -q -O /usr/local/bin/appimagetool \
+            https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
+          chmod +x /usr/local/bin/appimagetool
+
+      - name: Build AppImage
+        run: make app-image
+
+      - name: Upload AppImage
+        uses: actions/upload-artifact@v4
+        with:
+          name: finality-manager-appimage
+          path: build/appImage/Finality-Manager-x86_64.AppImage
+          if-no-files-found: error
+
+  windows:
+    name: Windows build & test
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up MSYS2
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            make
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-pkgconf
+            mingw-w64-ucrt-x86_64-gtk4
+
+      - name: Build
+        shell: msys2 {0}
+        run: >-
+          make WINDOWS=1
+          WINDOWS_SYSROOT=/ucrt64
+          WINDOWS_PKGCONFIG_LIBDIR=/ucrt64/lib/pkgconfig:/ucrt64/share/pkgconfig
+
+      - name: Run log-capture regression test
+        shell: msys2 {0}
+        run: >-
+          make test-windows
+          WINDOWS_SYSROOT=/ucrt64
+          WINDOWS_PKGCONFIG_LIBDIR=/ucrt64/lib/pkgconfig:/ucrt64/share/pkgconfig
+
+      - name: Upload Windows executable
+        uses: actions/upload-artifact@v4
+        with:
+          name: finality-manager-windows
+          path: build/windows/finality-manager.exe
+          if-no-files-found: error

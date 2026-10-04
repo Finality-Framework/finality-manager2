@@ -54,7 +54,7 @@ Flatpak 与 Snap 路径），解析各库的 `steamapps/libraryfolders.vdf` 以�
 
 ```sh
 make
-./build/finality-manager
+./build/linux/finality-manager
 ```
 
 不放心的可以跑一遍无界面测试（模组发现、ModsOff.txt 与播放集读写）：
@@ -82,7 +82,7 @@ make test-windows
 make app-image
 ```
 
-产物为 `build/Finality-Manager-x86_64.AppImage`。如果工具不在 `PATH` 中，可通过
+产物为 `build/appImage/Finality-Manager-x86_64.AppImage`。如果工具不在 `PATH` 中，可通过
 `APPIMAGE_TOOL=/path/to/appimagetool make app-image` 指定路径。
 
 ## 交叉编译 Windows x86_64
@@ -95,11 +95,11 @@ GTK4 `.pc` 文件）。Makefile 也支持 quasi-msys2 的 UCRT64 sysroot（默�
 make windows
 ```
 
-产物为 `build-windows/finality-manager.exe`。如果使用 Wine 运行，需要把 GTK4
+产物为 `build/windows/finality-manager.exe`。如果使用 Wine 运行，需要把 GTK4
 运行时 DLL 加入搜索路径：
 
 ```sh
-WINEPATH="$HOME/quasi-msys2/root/ucrt64/bin" wine build-windows/finality-manager.exe
+WINEPATH="$HOME/quasi-msys2/root/ucrt64/bin" wine build/windows/finality-manager.exe
 ```
 
 也可以直接运行 `make run-windows`。如果工具链前缀不同，可覆盖
@@ -110,7 +110,7 @@ WINEPATH="$HOME/quasi-msys2/root/ucrt64/bin" wine build-windows/finality-manager
 
 `make windows` 只生成 exe，目标机器上如果没有 MSYS2/GTK4 环境就无法运行。用
 `bundle-windows` 会自动把 GTK4/GLib 的 DLL、GSettings schema、GTK 数据、
-gdk-pixbuf 加载器、图标主题和 `res/` 资源一并复制到 `build-windows/bundle/`：
+gdk-pixbuf 加载器、图标主题和 `res/` 资源一并复制到 `build/windows/bundle/`：
 
 ```sh
 make bundle-windows
@@ -152,7 +152,7 @@ pkg-config），`vendor/ucrt64/` 只提供运行时。
 make nsis
 ```
 
-产物为 `build-windows/Finality-Manager-Setup.exe`。安装程序会：
+产物为 `build/windows/Finality-Manager-Setup.exe`。安装程序会：
 
 - 安装到 `%ProgramFiles%\Finality Manager`，并写入开始菜单与卸载项；
 - 可选创建桌面快捷方式；
