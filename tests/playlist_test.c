@@ -259,10 +259,10 @@ int main(void) {
   CHECK(list_path && g_strcmp0(list_path, expected_list_path) == 0);
   g_free(expected_list_path);
   char *list = read_file(list_path);
-  CHECK(contains_line(list, alpha->path));
-  CHECK(contains_line(list, one->path));
-  CHECK(!contains_line(list, gamma->path));
-  CHECK(strstr(list, "# Finality Manager playlist: Test / 测试") != NULL);
+  CHECK(strstr(list, "[\n") != NULL);
+  CHECK(strstr(list, alpha->path) != NULL);
+  CHECK(strstr(list, one->path) != NULL);
+  CHECK(strstr(list, gamma->path) == NULL);
   g_free(list);
 
   /* write_mod_list only rewrites the definition and leaves ModsOff.txt alone */
@@ -280,9 +280,8 @@ int main(void) {
   g_free(after);
   g_free(before);
   list = read_file(list_path);
-  CHECK(contains_line(list, alpha->path));
-  CHECK(!contains_line(list, one->path));
-  CHECK(strstr(list, "# Finality Manager playlist: Alpha only") != NULL);
+  CHECK(strstr(list, alpha->path) != NULL);
+  CHECK(strstr(list, one->path) == NULL);
   g_free(list);
   g_ptr_array_unref(only_alpha);
 

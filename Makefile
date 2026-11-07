@@ -14,15 +14,14 @@ WINDOWS_LD := $(WINDOWS_TRIPLE)-ld
 PLATFORM_LDFLAGS := -mwindows
 WINDOWS_EXTRA_LIBS := -lshell32 -lole32
 
-# quasi-msys2 keeps the UCRT64 GTK packages in a relocatable sysroot. Use the
-# host pkg-config with target metadata when a cross pkg-config is unavailable.
+# quasi-msys2 keeps the UCRT64 GTK packages in a relocatable sysroot. Use host
+# pkg-config with an explicit target metadata path; the system cross wrapper may
+# have a different compiled-in pkg-config search path.
 QUASI_MSYS2_ROOT ?= $(HOME)/quasi-msys2/root
 QUASI_MSYS2_PREFIX ?= ucrt64
 WINDOWS_SYSROOT ?= $(QUASI_MSYS2_ROOT)
 WINDOWS_PKGCONFIG_LIBDIR ?= $(WINDOWS_SYSROOT)/$(QUASI_MSYS2_PREFIX)/lib/pkgconfig:$(WINDOWS_SYSROOT)/$(QUASI_MSYS2_PREFIX)/share/pkgconfig
-ifeq ($(shell command -v $(PKG_CONFIG) >/dev/null 2>&1 && echo yes),)
 PKG_CONFIG := pkg-config
-endif
 export PKG_CONFIG_SYSROOT_DIR := $(WINDOWS_SYSROOT)
 export PKG_CONFIG_LIBDIR := $(WINDOWS_PKGCONFIG_LIBDIR)
 else
@@ -84,14 +83,14 @@ all: $(TARGET) compile-commands
 
 # Build a portable Linux AppImage.  Set APPIMAGE_TOOL to an existing
 # appimagetool binary when it is not available on PATH.
-app-image: $(TARGET) res/Finality_Loader.jar res/logo.png res/aoh3.png res/aoh2de.png
+app-image: $(TARGET) res/finality-loader-1.6.0.jar res/logo.png res/aoh3.png res/aoh2de.png
 	@if [ "$(WINDOWS)" = "1" ]; then echo "AppImage packaging requires the native Linux build (do not pass WINDOWS=1)." >&2; exit 1; fi
 	rm -rf "$(APPIMAGE_DIR)"
 	mkdir -p "$(APPIMAGE_BUILD_DIR)"
 	mkdir -p "$(APPIMAGE_DIR)/usr/bin" "$(APPIMAGE_DIR)/usr/share/applications" "$(APPIMAGE_DIR)/usr/share/icons/hicolor/256x256/apps"
 	cp "$(TARGET)" "$(APPIMAGE_DIR)/usr/bin/finality-manager"
 	mkdir -p "$(APPIMAGE_DIR)/usr/bin/res"
-	cp res/Finality_Loader.jar res/aoh3.png res/aoh2de.png "$(APPIMAGE_DIR)/usr/bin/res/"
+	cp res/finality-loader-1.6.0.jar res/aoh3.png res/aoh2de.png "$(APPIMAGE_DIR)/usr/bin/res/"
 	cp res/logo.png "$(APPIMAGE_DIR)/usr/share/icons/hicolor/256x256/apps/finality-manager.png"
 	printf '%s\n' '#!/bin/sh' 'exec "$$APPDIR/usr/bin/finality-manager" "$$@"' > "$(APPIMAGE_DIR)/AppRun"
 	chmod +x "$(APPIMAGE_DIR)/AppRun"
@@ -173,7 +172,7 @@ $(TARGET): $(SOURCES) src/app.h src/i18n.h src/config.h src/app_types.h \
 	$(WINDOW_HEADERS) \
 	$(LOADER_OBJ) $(I18N_OBJS) $(ASSET_OBJS) $(ICON_OBJ)
 	mkdir -p $(PLATFORM_BUILD_DIR)
-	$(CC) $(CFLAGS) $(INCLUDES) $(GTK_CFLAGS) $(SOURCES) $(LOADER_OBJ) $(I18N_OBJS) $(ASSET_OBJS) $(ICON_OBJ) -o $@ $(LDFLAGS) $(PLATFORM_LDFLAGS) $(GTK_LIBS) $(WINDOWS_EXTRA_LIBS)
+	$(CC) $(CFLAGS) $(INCLUDES) $(GTK_CFLAGS) $(SOURCES) $(LOADER_OBJ) $(I18N_OBJS) $(ASSET_OBJS) $(ICON_OBJ) -o $@ $(LDFLAGS) $(PLATFORM_LDFLAGS) $(GTK_LIBS) $(WINDOWS_EXTRA_LIBS) $(if $(filter 1,$(WINDOWS)),,-s)
 
 $(PLATFORM_BUILD_DIR)/aoh3.o: res/aoh3.png
 	mkdir -p $(PLATFORM_BUILD_DIR)
@@ -191,7 +190,7 @@ $(PLATFORM_BUILD_DIR)/logo-res.o: src/logo.rc res/logo.ico
 	mkdir -p $(PLATFORM_BUILD_DIR)
 	$(WINDRES) -i $< -o $@
 
-$(LOADER_OBJ): res/Finality_Loader.jar
+$(LOADER_OBJ): res/finality-loader-1.6.0.jar
 	mkdir -p $(PLATFORM_BUILD_DIR)
 	$(WINDOWS_LD) -r -b binary -o $@ $<
 

@@ -26,8 +26,8 @@
 
 extern const unsigned char _binary_res_logo_png_start[],
     _binary_res_logo_png_end[];
-extern const unsigned char _binary_res_Finality_Loader_jar_start[];
-extern const unsigned char _binary_res_Finality_Loader_jar_end[];
+extern const unsigned char _binary_res_finality_loader_1_6_0_jar_start[];
+extern const unsigned char _binary_res_finality_loader_1_6_0_jar_end[];
 
 static void register_embedded_logo(void) {
   char *dir = g_build_filename(g_get_tmp_dir(), "finality-manager-icons", NULL);
@@ -44,13 +44,11 @@ static void register_embedded_logo(void) {
   g_free(path);
   g_free(dir);
 }
-#ifndef G_OS_WIN32
 static void detect_steam_clicked(GtkButton *b, gpointer data) {
   (void)b;
   detect_steam(data);
   populate(data);
 }
-#endif
 static void manage_mods_clicked(GtkButton *b, gpointer data) {
   (void)b;
   Manager *m = data;
@@ -143,7 +141,7 @@ static void selected(GtkListBox *b, GtkListBoxRow *r, gpointer data) {
   guint enabled_mods = instance_enabled_mod_count(i);
   char *ready = g_strdup(i18n("details.ready"));
   char *mods_text = g_strdup_printf(i18n("details.enabled_mods"), enabled_mods);
-  char *loader_text = g_strdup_printf(i18n("details.loader_version"), "1.6.0");
+  char *loader_text = g_strdup_printf(i18n("details.loader_version"), "1.6.2-diagnostic (Framework 2)");
   char *t = g_strdup_printf("<b>%s</b>\n\n%s\n\n%s\n\n%s\n\n%s", i->name,
                             i->path, ready, mods_text, loader_text);
   gtk_label_set_markup(GTK_LABEL(m->details), t);
@@ -183,30 +181,26 @@ static char *source(void) {
     e = g_strdup(".");
 #endif
   char *d = g_path_get_dirname(e),
-       *p = g_build_filename(d, "res", "Finality_Loader.jar", NULL);
+       *p = g_build_filename(d, "res", "finality-loader-1.6.0.jar", NULL);
   g_free(e);
   g_free(d);
   return p;
 }
 static char *loader_source_with_fallback(void) {
-  char *local = source();
-  if (g_file_test(local, G_FILE_TEST_IS_REGULAR))
-    return local;
-  g_free(local);
   char *embedded = g_build_filename(
-      g_get_tmp_dir(), "finality-manager-embedded-loader.jar", NULL);
-  if (!g_file_test(embedded, G_FILE_TEST_IS_REGULAR)) {
-    gsize size = (gsize)(_binary_res_Finality_Loader_jar_end -
-                         _binary_res_Finality_Loader_jar_start);
-    g_file_set_contents(embedded,
-                        (const char *)_binary_res_Finality_Loader_jar_start,
-                        size, NULL);
+      g_get_tmp_dir(), "finality-manager-embedded-finality-loader.jar", NULL);
+  gsize size = (gsize)(_binary_res_finality_loader_1_6_0_jar_end -
+                       _binary_res_finality_loader_1_6_0_jar_start);
+  if (!g_file_set_contents(embedded,
+                           (const char *)_binary_res_finality_loader_1_6_0_jar_start,
+                           size, NULL)) {
+    g_free(embedded);
+    return NULL;
   }
   return embedded;
 }
-/* mode is NULL for a normal launch or "only-gen" to generate the jar without
-   starting the game.  The loader is copied into the instance and its output is
-   streamed into the log window in both cases. */
+/* The Loader2 jar is copied into the instance and its output is streamed into
+   the log window. The mode parameter remains for the existing UI callback. */
 static gboolean launch_instance(Manager *m, const char *mod_list_path,
                                 const char *mode) {
   Instance *i = selected_instance(m);
@@ -214,9 +208,9 @@ static gboolean launch_instance(Manager *m, const char *mod_list_path,
     return FALSE;
   gboolean started = FALSE;
   char *s = loader_source_with_fallback(),
-       *dst = g_build_filename(i->path, "Finality_Loader.jar", NULL);
+       *dst = g_build_filename(i->path, "finality-loader-1.6.0.jar", NULL);
   GError *e = NULL;
-  if (!g_file_test(s, G_FILE_TEST_IS_REGULAR)) {
+  if (!s || !g_file_test(s, G_FILE_TEST_IS_REGULAR)) {
     status(m, i18n("status.loader_missing"));
     goto done;
   }
@@ -246,33 +240,28 @@ static gboolean launch_instance(Manager *m, const char *mod_list_path,
   g_subprocess_launcher_set_cwd(l, i->path);
   g_subprocess_launcher_setenv(l, "LANG", "C.UTF-8", TRUE);
   g_subprocess_launcher_setenv(l, "LC_ALL", "C.UTF-8", TRUE);
+  char *debug_arg = g_strdup_printf("-Dfinality.debug=%s", m->print_debug_log ? "true" : "false");
+  g_print("[INFO] Manager launching embedded Loader %s -> %s with Java %s; debug logging: %s\n", s, dst, j, m->print_debug_log ? "enabled" : "disabled");
 
-  const char *av[24];
+  const char *av[25];
   int n = 0;
   av[n++] = j;
+  av[n++] = debug_arg;
   av[n++] = "-Dfile.encoding=UTF-8";
   av[n++] = "-Dsun.stdout.encoding=UTF-8";
   av[n++] = "-Dsun.stderr.encoding=UTF-8";
   av[n++] = "-jar";
-  av[n++] = "Finality_Loader.jar";
-  if (mode) {
-    av[n++] = "--launch-mode";
-    av[n++] = mode;
-    av[n++] = "--headless";
-    av[n++] = "--no-update-check";
-  }
-  if (i->mp) {
-    av[n++] = "-g";
-    av[n++] = "./multi.jar";
-  }
-  if (mod_list_path) {
-    av[n++] = "--mod-list";
-    av[n++] = mod_list_path;
-  }
-  if (m->print_debug_log)
-    av[n++] = "-d";
+   av[n++] = "finality-loader-1.6.0.jar";
+   av[n++] = "--core";
+   av[n++] = i->mp ? "./multi.jar" : "./game.jar";
+   if (mod_list_path) {
+     av[n++] = "--mods";
+     av[n++] = mod_list_path;
+   }
+   (void)mode;
   av[n] = NULL;
   GSubprocess *x = g_subprocess_launcher_spawnv(l, av, &e);
+  g_free(debug_arg);
   g_object_unref(l);
   if (x) {
     status(m, i18n(mode ? "status.generating" : "status.started"));
@@ -295,9 +284,8 @@ done:
 gboolean main_window_launch(Manager *m, const char *mod_list_path) {
   return launch_instance(m, mod_list_path, NULL);
 }
-/* The launch button always applies the active playlist first: its mods get
-   enabled, every other mod of the instance gets disabled, and the resulting mod
-   list is handed to the loader with --mod-list. */
+/* The launch button applies the active playlist first and hands the JSON list
+   to Loader2 with --mods. */
 static void launch(GtkButton *b, gpointer data) {
   (void)b;
   Manager *m = data;
@@ -397,7 +385,7 @@ static void generate_jar(GtkButton *button, gpointer data) {
     g_free(mod_list);
     return;
   }
-  launch_instance(m, mod_list, "only-gen");
+  launch_instance(m, mod_list, NULL);
   g_free(mod_list);
 }
 static GtkWidget *tools_popover(Manager *m) {

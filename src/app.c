@@ -330,7 +330,9 @@ static void detect_windows_paths(GPtrArray *roots) {
 }
 #endif
 void detect_steam(Manager *m) {
+#ifndef G_OS_WIN32
   const char *home = g_get_home_dir();
+#endif
   const char *data = g_get_user_data_dir();
   GPtrArray *roots = g_ptr_array_new_with_free_func(g_free),
             *libraries = g_ptr_array_new_with_free_func(g_free),

@@ -7,11 +7,11 @@ Flatpak 与 Snap 路径），解析各库的 `steamapps/libraryfolders.vdf` 以�
 然后从中解析出游戏实例。首次运行且尚无配置文件时会自动执行；也可点击标题栏的搜索按钮
 随时手动重新检测。
 
-点击“启动游戏”时，程序会把应用资源中的 `res/Finality_Loader.jar` 覆盖复制到实例根目录，然后在该目录执行 `java -jar Finality_Loader.jar`。如果实例自带 `jre/bin/java`，会优先使用它。
+点击“启动游戏”时，程序会把应用资源中的 `res/finality-loader-1.6.0.jar` 覆盖复制到实例根目录，然后在该目录使用 Loader2 启动。Loader2 接收 `--core` 和 `--mods` 参数；如果实例自带 `jre/bin/java`，会优先使用它。
 
 如果 Age of History 3 实例根目录下存在 `multi.jar`，程序会额外添加一个名为
 “Age of History 3 MP”的实例。启动该实例时优先使用目录下的 `jdk/bin/java`，并把
-`-g ./multi.jar` 传给 Loader，工作目录仍为游戏根目录。
+Loader2 会将 `./multi.jar` 作为 MP 实例的 `--core`，工作目录仍为游戏根目录。
 
 “模组”页会读取所选实例 `mods/` 目录中的模组，并从模组的 `mod.txt` 显示名称和描述。开关状态与游戏使用的 `settings/ModsOff.txt` 同步，会在下次启动游戏时生效。
 
@@ -28,9 +28,8 @@ Flatpak 与 Snap 路径），解析各库的 `steamapps/libraryfolders.vdf` 以�
 当前筛选出的模组）、按来源（本地/Steam）与启用状态过滤，以及按标题搜索模组。
 
 播放集按实例存储，位于实例根目录的 `.finality/manager/playlists.properties`；启动时生成的 Loader 模组列表
-写入同一目录的 `modlist.txt`，并通过新增的 `--mod-list` 参数传给 Finality Loader，让 Loader 跳过自动发现、
-只加载列表中的模组。启用状态同时写入 `settings/ModsOff.txt`，保证游戏本体的模组加载与播放集一致。
-注意：`--mod-list` 需要 Loader 1.6.0 及以上（本仓库内置的 `res/Finality_Loader.jar` 已包含该参数）；
+写入同一目录的 `modlist.txt`，内容为 Loader2 接受的 JSON 模组目录数组，并通过 `--mods` 参数传给 Loader2。
+Loader2 只加载列表中的模组。启用状态同时写入 `settings/ModsOff.txt`，保证游戏本体的模组加载与播放集一致。
 播放集未包含 Finality API 时 Loader 会提示找不到 API。
 
 ## 工具与进程状态
@@ -38,8 +37,7 @@ Flatpak 与 Snap 路径），解析各库的 `steamapps/libraryfolders.vdf` 以�
 实例详情页“浏览模组文件”左侧的扳手按钮提供两个高级操作：
 
 - “生成模组列表定义”：只根据当前播放集写出 `<实例>/.finality/manager/modlist.txt`，不修改启用状态；
-- “使用 only-gen 模式生成 Jar”：先应用当前播放集，再以 `--launch-mode only-gen --headless`
-  运行 Loader，只生成 `.finality/generated.jar` 而不启动游戏。
+- “使用 Loader2 启动”：先应用当前播放集，再以 Loader2 启动当前游戏实例。
 
 日志窗口底部会显示对应游戏进程的状态（运行中 / 已关闭）。进程退出后自动更新，
 “终止游戏进程”按钮在进程结束后不可用。

@@ -156,18 +156,23 @@ static GString *build_mod_list(Instance *instance, Playlist *playlist,
   GString *list = g_string_new(NULL);
   char *name = g_strdup(playlist->name);
   g_strdelimit(name, "\r\n", ' ');
-  g_string_append_printf(list, "# Finality Manager playlist: %s\n", name);
+  g_string_append(list, "[\n");
   g_free(name);
+  gboolean first = TRUE;
   for (guint i = 0; i < mods->len; i++) {
     Mod *mod = g_ptr_array_index(mods, i);
     char *id = mod_id_from_path(instance, mod->path);
     if (g_hash_table_contains(wanted, id)) {
       if (enabled_paths)
         g_hash_table_add(enabled_paths, mod->path);
-      g_string_append_printf(list, "%s\n", mod->path);
+      gchar *escaped = g_strescape(mod->path, NULL);
+      g_string_append_printf(list, "%s\"%s\"", first ? "" : ",\n", escaped);
+      g_free(escaped);
+      first = FALSE;
     }
     g_free(id);
   }
+  g_string_append(list, "\n]\n");
   g_hash_table_unref(wanted);
   return list;
 }
