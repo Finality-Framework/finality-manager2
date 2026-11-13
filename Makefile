@@ -66,10 +66,13 @@ WINDOW_SOURCES := src/window/main_window.c \
 	src/window/playlists_window.c src/window/preferences_window.c \
 	src/window/about_window.c src/window/logging_window.c
 SOURCES := src/main.c src/app.c src/i18n.c src/config.c src/string_util.c \
-	src/mods.c src/playlist.c src/win32_compat.c $(WINDOW_SOURCES)
+	src/mods.c src/playlist.c src/loader_jar.c src/win32_compat.c $(WINDOW_SOURCES)
 WINDOW_HEADERS := src/window/main_window.h \
 	src/window/playlists_window.h src/window/preferences_window.h \
 	src/window/about_window.h src/window/logging_window.h
+FRAMEWORK_VERSION ?= $(shell cat ../VERSION 2>/dev/null || echo 1.0.0)
+LOADER_VERSION ?= $(FRAMEWORK_VERSION)
+LOADER_JAR ?= res/finality-loader-$(LOADER_VERSION).jar
 LOADER_OBJ := $(PLATFORM_BUILD_DIR)/loader.o
 ASSET_OBJS := $(PLATFORM_BUILD_DIR)/aoh3.o $(PLATFORM_BUILD_DIR)/aoh2de.o $(PLATFORM_BUILD_DIR)/logo.o
 I18N_OBJS := $(PLATFORM_BUILD_DIR)/en-properties.o $(PLATFORM_BUILD_DIR)/zh-CN-properties.o
@@ -83,14 +86,14 @@ all: $(TARGET) compile-commands
 
 # Build a portable Linux AppImage.  Set APPIMAGE_TOOL to an existing
 # appimagetool binary when it is not available on PATH.
-app-image: $(TARGET) res/finality-loader-1.6.0.jar res/logo.png res/aoh3.png res/aoh2de.png
+app-image: $(TARGET) $(LOADER_JAR) res/logo.png res/aoh3.png res/aoh2de.png
 	@if [ "$(WINDOWS)" = "1" ]; then echo "AppImage packaging requires the native Linux build (do not pass WINDOWS=1)." >&2; exit 1; fi
 	rm -rf "$(APPIMAGE_DIR)"
 	mkdir -p "$(APPIMAGE_BUILD_DIR)"
 	mkdir -p "$(APPIMAGE_DIR)/usr/bin" "$(APPIMAGE_DIR)/usr/share/applications" "$(APPIMAGE_DIR)/usr/share/icons/hicolor/256x256/apps"
 	cp "$(TARGET)" "$(APPIMAGE_DIR)/usr/bin/finality-manager"
 	mkdir -p "$(APPIMAGE_DIR)/usr/bin/res"
-	cp res/finality-loader-1.6.0.jar res/aoh3.png res/aoh2de.png "$(APPIMAGE_DIR)/usr/bin/res/"
+	cp "$(LOADER_JAR)" res/aoh3.png res/aoh2de.png "$(APPIMAGE_DIR)/usr/bin/res/"
 	cp res/logo.png "$(APPIMAGE_DIR)/usr/share/icons/hicolor/256x256/apps/finality-manager.png"
 	printf '%s\n' '#!/bin/sh' 'exec "$$APPDIR/usr/bin/finality-manager" "$$@"' > "$(APPIMAGE_DIR)/AppRun"
 	chmod +x "$(APPIMAGE_DIR)/AppRun"
@@ -128,7 +131,7 @@ vendor-windows:
 
 # Build a Windows installer from the self-contained bundle with NSIS.  Needs
 # the `makensis` tool (nsis package).  Output: build/windows/Finality-Manager-Setup.exe
-APP_VERSION ?= 1.6.0
+APP_VERSION ?= $(shell cat ../VERSION 2>/dev/null || echo 1.0.0)
 NSIS ?= makensis
 NSIS_SCRIPT ?= installer/finality-manager.nsi
 NSIS_OUTFILE ?= build/windows/Finality-Manager-Setup.exe
@@ -190,9 +193,10 @@ $(PLATFORM_BUILD_DIR)/logo-res.o: src/logo.rc res/logo.ico
 	mkdir -p $(PLATFORM_BUILD_DIR)
 	$(WINDRES) -i $< -o $@
 
-$(LOADER_OBJ): res/finality-loader-1.6.0.jar
+$(LOADER_OBJ): $(LOADER_JAR)
 	mkdir -p $(PLATFORM_BUILD_DIR)
-	$(WINDOWS_LD) -r -b binary -o $@ $<
+	cp $(LOADER_JAR) $(PLATFORM_BUILD_DIR)/loader.jar
+	cd $(PLATFORM_BUILD_DIR) && $(WINDOWS_LD) -r -b binary -o loader.o loader.jar
 
 run: $(TARGET)
 	./$(TARGET)

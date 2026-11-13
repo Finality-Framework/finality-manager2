@@ -7,7 +7,7 @@
 #   exe         path to finality-manager.exe
 #   runtime-dir prefix that holds bin/, lib/ and share/ (either an MSYS2 sysroot
 #               or the vendored vendor/ucrt64 directory)
-#   res-dir     directory with finality-loader-1.6.0.jar and the png/ico assets
+#   res-dir     directory with finality-loader-*.jar and the png/ico assets
 #   output-dir  directory that receives the self-contained bundle
 #   objdump     optional cross objdump used to read PE imports
 #
@@ -133,7 +133,9 @@ done
 if [ -d "$RESDIR" ]; then
   echo "bundle-windows: copying application resources"
   mkdir -p "$OUT/res"
-  cp "$RESDIR/finality-loader-1.6.0.jar" "$OUT/res/" 2>/dev/null || true
+  for jar in "$RESDIR"/finality-loader-*.jar; do
+    [ -f "$jar" ] && cp "$jar" "$OUT/res/" 2>/dev/null || true
+  done
   for asset in "$RESDIR"/*.png "$RESDIR"/*.ico; do
     [ -f "$asset" ] && cp "$asset" "$OUT/res/" 2>/dev/null || true
   done

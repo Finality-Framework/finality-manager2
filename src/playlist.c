@@ -212,3 +212,13 @@ gboolean playlist_write_mod_list(Instance *instance, Playlist *playlist,
   g_ptr_array_unref(mods);
   return ok;
 }
+
+gboolean playlist_write_mod_list_to(Instance *instance, Playlist *playlist,
+                                    const char *path, GError **error) {
+  GPtrArray *mods = instance_mods(instance);
+  GString *list = build_mod_list(instance, playlist, mods, NULL);
+  gboolean ok = g_file_set_contents(path, list->str, list->len, error);
+  g_string_free(list, TRUE);
+  g_ptr_array_unref(mods);
+  return ok;
+}

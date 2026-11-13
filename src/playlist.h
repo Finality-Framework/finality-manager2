@@ -22,3 +22,7 @@ gboolean playlist_apply(Instance *instance, Playlist *playlist,
    with g_free). */
 gboolean playlist_write_mod_list(Instance *instance, Playlist *playlist,
                                  char **mod_list_path, GError **error);
+/* Writes the loader mod list definition for the playlist to an explicit path
+   without changing the enabled mods. */
+gboolean playlist_write_mod_list_to(Instance *instance, Playlist *playlist,
+                                    const char *path, GError **error);

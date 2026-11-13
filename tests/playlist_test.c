@@ -283,6 +283,20 @@ int main(void) {
   CHECK(strstr(list, alpha->path) != NULL);
   CHECK(strstr(list, one->path) == NULL);
   g_free(list);
+
+  /* write_mod_list_to writes the same definition to an explicit path */
+  char *custom_dir = g_build_filename(instance_path, ".finality", NULL);
+  g_mkdir_with_parents(custom_dir, 0755);
+  char *custom_list =
+      g_build_filename(custom_dir, "modlist.json", NULL);
+  ok = playlist_write_mod_list_to(&instance, alpha_only, custom_list, &error);
+  CHECK(ok && !error);
+  list = read_file(custom_list);
+  CHECK(strstr(list, alpha->path) != NULL);
+  CHECK(strstr(list, one->path) == NULL);
+  g_free(list);
+  g_free(custom_list);
+  g_free(custom_dir);
   g_ptr_array_unref(only_alpha);
 
   g_free(list_path);

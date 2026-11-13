@@ -3,6 +3,7 @@
 #include "app.h"
 #include "config.h"
 #include "i18n.h"
+#include "loader_jar.h"
 #include "logging_window.h"
 #include "mods.h"
 #include "playlist.h"
@@ -26,8 +27,6 @@
 
 extern const unsigned char _binary_res_logo_png_start[],
     _binary_res_logo_png_end[];
-extern const unsigned char _binary_res_finality_loader_1_6_0_jar_start[];
-extern const unsigned char _binary_res_finality_loader_1_6_0_jar_end[];
 
 static void register_embedded_logo(void) {
   char *dir = g_build_filename(g_get_tmp_dir(), "finality-manager-icons", NULL);
@@ -141,10 +140,13 @@ static void selected(GtkListBox *b, GtkListBoxRow *r, gpointer data) {
   guint enabled_mods = instance_enabled_mod_count(i);
   char *ready = g_strdup(i18n("details.ready"));
   char *mods_text = g_strdup_printf(i18n("details.enabled_mods"), enabled_mods);
-  char *loader_text = g_strdup_printf(i18n("details.loader_version"), "1.6.2-diagnostic (Framework 2)");
+  char *version = loader_jar_version();
+  char *loader_text = g_strdup_printf(i18n("details.loader_version"),
+                                      version ? version : "unknown");
   char *t = g_strdup_printf("<b>%s</b>\n\n%s\n\n%s\n\n%s\n\n%s", i->name,
                             i->path, ready, mods_text, loader_text);
   gtk_label_set_markup(GTK_LABEL(m->details), t);
+  g_free(version);
   g_free(loader_text);
   g_free(mods_text);
   g_free(ready);
@@ -169,36 +171,6 @@ static void main_window_refresh_details(Manager *m) {
   selected(GTK_LIST_BOX(m->list),
            gtk_list_box_get_selected_row(GTK_LIST_BOX(m->list)), m);
 }
-static char *source(void) {
-#ifdef G_OS_WIN32
-  wchar_t buf[32768];
-  DWORD n = GetModuleFileNameW(NULL, buf, G_N_ELEMENTS(buf));
-  char *e = n ? g_utf16_to_utf8((const gunichar2 *)buf, n, NULL, NULL, NULL)
-              : g_strdup(".");
-#else
-  char *e = g_file_read_link("/proc/self/exe", NULL);
-  if (!e)
-    e = g_strdup(".");
-#endif
-  char *d = g_path_get_dirname(e),
-       *p = g_build_filename(d, "res", "finality-loader-1.6.0.jar", NULL);
-  g_free(e);
-  g_free(d);
-  return p;
-}
-static char *loader_source_with_fallback(void) {
-  char *embedded = g_build_filename(
-      g_get_tmp_dir(), "finality-manager-embedded-finality-loader.jar", NULL);
-  gsize size = (gsize)(_binary_res_finality_loader_1_6_0_jar_end -
-                       _binary_res_finality_loader_1_6_0_jar_start);
-  if (!g_file_set_contents(embedded,
-                           (const char *)_binary_res_finality_loader_1_6_0_jar_start,
-                           size, NULL)) {
-    g_free(embedded);
-    return NULL;
-  }
-  return embedded;
-}
 /* The Loader2 jar is copied into the instance and its output is streamed into
    the log window. The mode parameter remains for the existing UI callback. */
 static gboolean launch_instance(Manager *m, const char *mod_list_path,
@@ -207,8 +179,8 @@ static gboolean launch_instance(Manager *m, const char *mod_list_path,
   if (!i)
     return FALSE;
   gboolean started = FALSE;
-  char *s = loader_source_with_fallback(),
-       *dst = g_build_filename(i->path, "finality-loader-1.6.0.jar", NULL);
+  char *s = loader_jar_source(), *jar_name = loader_jar_name(),
+       *dst = g_build_filename(i->path, jar_name, NULL);
   GError *e = NULL;
   if (!s || !g_file_test(s, G_FILE_TEST_IS_REGULAR)) {
     status(m, i18n("status.loader_missing"));
@@ -251,7 +223,7 @@ static gboolean launch_instance(Manager *m, const char *mod_list_path,
   av[n++] = "-Dsun.stdout.encoding=UTF-8";
   av[n++] = "-Dsun.stderr.encoding=UTF-8";
   av[n++] = "-jar";
-   av[n++] = "finality-loader-1.6.0.jar";
+   av[n++] = jar_name;
    av[n++] = "--core";
    av[n++] = i->mp ? "./multi.jar" : "./game.jar";
    if (mod_list_path) {
@@ -278,6 +250,7 @@ static gboolean launch_instance(Manager *m, const char *mod_list_path,
   g_free(j);
 done:
   g_free(s);
+  g_free(jar_name);
   g_free(dst);
   return started;
 }
@@ -388,6 +361,154 @@ static void generate_jar(GtkButton *button, gpointer data) {
   launch_instance(m, mod_list, NULL);
   g_free(mod_list);
 }
+static gboolean install_loader_jar(Manager *m, Instance *instance,
+                                  GError **error) {
+  char *source = loader_jar_source();
+  char *name = loader_jar_name();
+  char *dst = g_build_filename(instance->path, name, NULL);
+  if (!source || !g_file_test(source, G_FILE_TEST_IS_REGULAR)) {
+    status(m, i18n("status.loader_missing"));
+    g_free(source);
+    g_free(name);
+    g_free(dst);
+    return FALSE;
+  }
+  GFile *sf = g_file_new_for_path(source), *df = g_file_new_for_path(dst);
+  gboolean ok =
+      g_file_copy(sf, df, G_FILE_COPY_OVERWRITE, NULL, NULL, NULL, error);
+  g_object_unref(sf);
+  g_object_unref(df);
+  g_free(source);
+  g_free(name);
+  g_free(dst);
+  return ok;
+}
+static void generate_launch_scripts(GtkButton *button, gpointer data) {
+  (void)button;
+  Manager *m = data;
+  Instance *instance = selected_instance(m);
+  Playlist *playlist = playlists_find(m->playlists, m->active_playlist_id);
+  if (!instance)
+    return;
+  if (!playlist) {
+    status(m, i18n("status.no_playlist"));
+    return;
+  }
+  char *dir = g_build_filename(instance->path, ".finality", NULL);
+  char *jar_name = loader_jar_name();
+  GError *error = NULL;
+  if (g_mkdir_with_parents(dir, 0755) != 0) {
+    status(m, i18n("status.generate_failed"));
+    g_free(jar_name);
+    g_free(dir);
+    return;
+  }
+  char *mod_file = g_build_filename(dir, "modlist.json", NULL);
+  if (!playlist_write_mod_list_to(instance, playlist, mod_file, &error)) {
+    status(m, error ? error->message : i18n("status.generate_failed"));
+    g_clear_error(&error);
+    goto done;
+  }
+  if (!install_loader_jar(m, instance, &error)) {
+    if (error) {
+      status(m, error->message);
+      g_clear_error(&error);
+    }
+    goto done;
+  }
+
+  const char *core = instance->mp ? "multi.jar" : "game.jar";
+  const char *debug = m->print_debug_log ? "true" : "false";
+
+  GString *sh = g_string_new(
+      "#!/bin/sh\n"
+      "# Generated by Finality Manager.\n"
+      "SCRIPT_DIR=$(CDPATH= cd -- \"$(dirname -- \"$0\")\" && pwd)\n"
+      "GAME_DIR=$(CDPATH= cd -- \"$SCRIPT_DIR/..\" && pwd)\n"
+      "JAVA=\"java\"\n"
+      "if [ -x \"$GAME_DIR/jdk/bin/java\" ]; then\n"
+      "  JAVA=\"$GAME_DIR/jdk/bin/java\"\n"
+      "elif [ -x \"$GAME_DIR/jre/bin/java\" ]; then\n"
+      "  JAVA=\"$GAME_DIR/jre/bin/java\"\n"
+      "fi\n"
+      "cd \"$GAME_DIR\" || exit 1\n");
+  char *sh_cmd = g_strdup_printf(
+      "exec \"$JAVA\" -Dfinality.debug=%s -Dfile.encoding=UTF-8 "
+      "-Dsun.stdout.encoding=UTF-8 -Dsun.stderr.encoding=UTF-8 "
+      "-jar \"%s\" --core \"%s\" "
+      "--mods \"$SCRIPT_DIR/modlist.json\" \"$@\"\n",
+      debug, jar_name, core);
+  g_string_append(sh, sh_cmd);
+  g_free(sh_cmd);
+
+  GString *bat = g_string_new(
+      "@echo off\r\n"
+      "setlocal\r\n"
+      "set \"SCRIPT_DIR=%~dp0\"\r\n"
+      "set \"GAME_DIR=%~dp0..\"\r\n"
+      "set \"JAVA=java\"\r\n"
+      "if exist \"%GAME_DIR%\\jdk\\bin\\java.exe\" set "
+      "\"JAVA=%GAME_DIR%\\jdk\\bin\\java.exe\"\r\n"
+      "if exist \"%GAME_DIR%\\jre\\bin\\java.exe\" if /I \"%JAVA%\"==\"java\" "
+      "set \"JAVA=%GAME_DIR%\\jre\\bin\\java.exe\"\r\n"
+      "cd /d \"%GAME_DIR%\"\r\n");
+  char *bat_cmd = g_strdup_printf(
+      "\"%%JAVA%%\" -Dfinality.debug=%s -Dfile.encoding=UTF-8 "
+      "-Dsun.stdout.encoding=UTF-8 -Dsun.stderr.encoding=UTF-8 "
+      "-jar \"%s\" --core \"%s\" "
+      "--mods \"%%SCRIPT_DIR%%modlist.json\" %%*\r\n"
+      "exit /b %%ERRORLEVEL%%\r\n",
+      debug, jar_name, core);
+  g_string_append(bat, bat_cmd);
+  g_free(bat_cmd);
+
+  GString *ps1 = g_string_new(
+      "# Generated by Finality Manager.\r\n"
+      "$ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path\r\n"
+      "$GameDir = Split-Path -Parent $ScriptDir\r\n"
+      "$Java = \"java\"\r\n"
+      "$BundledJdk = Join-Path $GameDir \"jdk\\bin\\java.exe\"\r\n"
+      "$BundledJre = Join-Path $GameDir \"jre\\bin\\java.exe\"\r\n"
+      "if (Test-Path $BundledJdk) { $Java = $BundledJdk }\r\n"
+      "elseif (Test-Path $BundledJre) { $Java = $BundledJre }\r\n"
+      "Set-Location $GameDir\r\n");
+  char *ps1_cmd = g_strdup_printf(
+      "& $Java -Dfinality.debug=%s -Dfile.encoding=UTF-8 "
+      "-Dsun.stdout.encoding=UTF-8 -Dsun.stderr.encoding=UTF-8 "
+      "-jar \"%s\" --core \"%s\" "
+      "--mods (Join-Path $ScriptDir \"modlist.json\") @args\r\n"
+      "exit $LASTEXITCODE\r\n",
+      debug, jar_name, core);
+  g_string_append(ps1, ps1_cmd);
+  g_free(ps1_cmd);
+
+  char *sh_path = g_build_filename(dir, "launch.sh", NULL);
+  char *bat_path = g_build_filename(dir, "launch.bat", NULL);
+  char *ps1_path = g_build_filename(dir, "launch.ps1", NULL);
+  gboolean ok = g_file_set_contents(sh_path, sh->str, sh->len, &error) &&
+                g_file_set_contents(bat_path, bat->str, bat->len, &error) &&
+                g_file_set_contents(ps1_path, ps1->str, ps1->len, &error);
+  if (ok)
+    g_chmod(sh_path, 0755);
+  if (ok) {
+    char *text = g_strdup_printf(i18n("status.launch_scripts_generated"), dir);
+    status(m, text);
+    g_free(text);
+  } else {
+    status(m, error ? error->message : i18n("status.generate_failed"));
+    g_clear_error(&error);
+  }
+  g_free(sh_path);
+  g_free(bat_path);
+  g_free(ps1_path);
+  g_string_free(sh, TRUE);
+  g_string_free(bat, TRUE);
+  g_string_free(ps1, TRUE);
+done:
+  g_free(jar_name);
+  g_free(mod_file);
+  g_free(dir);
+}
 static GtkWidget *tools_popover(Manager *m) {
   GtkWidget *box = gtk_box_new(GTK_ORIENTATION_VERTICAL, 4);
   gtk_widget_set_margin_top(box, 3);
@@ -395,12 +516,17 @@ static GtkWidget *tools_popover(Manager *m) {
   gtk_widget_set_margin_start(box, 6);
   gtk_widget_set_margin_end(box, 6);
   GtkWidget *mod_list = gtk_button_new_with_label(i18n("tools.generate_mod_list"));
+  GtkWidget *scripts =
+      gtk_button_new_with_label(i18n("tools.generate_launch_scripts"));
   GtkWidget *jar = gtk_button_new_with_label(i18n("tools.generate_jar"));
   gtk_widget_set_halign(mod_list, GTK_ALIGN_FILL);
+  gtk_widget_set_halign(scripts, GTK_ALIGN_FILL);
   gtk_widget_set_halign(jar, GTK_ALIGN_FILL);
   g_signal_connect(mod_list, "clicked", G_CALLBACK(generate_mod_list), m);
+  g_signal_connect(scripts, "clicked", G_CALLBACK(generate_launch_scripts), m);
   g_signal_connect(jar, "clicked", G_CALLBACK(generate_jar), m);
   gtk_box_append(GTK_BOX(box), mod_list);
+  gtk_box_append(GTK_BOX(box), scripts);
   gtk_box_append(GTK_BOX(box), jar);
   GtkWidget *popover = gtk_popover_new();
   gtk_popover_set_child(GTK_POPOVER(popover), box);
@@ -433,14 +559,14 @@ void app_activate(GtkApplication *app, gpointer data) {
   manager_load(m);
   i18n_set_language(m->language);
   register_embedded_logo();
-  char *loader_path = source();
-  char *resource_dir = g_path_get_dirname(loader_path);
-  char *icon_dir = g_build_filename(resource_dir, "res", NULL);
-  GtkIconTheme *theme =
-      gtk_icon_theme_get_for_display(gdk_display_get_default());
-  gtk_icon_theme_add_search_path(theme, icon_dir);
-  g_free(icon_dir);
-  g_free(resource_dir);
+  char *loader_path = loader_jar_path();
+  if (loader_path) {
+    char *resource_dir = g_path_get_dirname(loader_path);
+    GtkIconTheme *theme =
+        gtk_icon_theme_get_for_display(gdk_display_get_default());
+    gtk_icon_theme_add_search_path(theme, resource_dir);
+    g_free(resource_dir);
+  }
   g_free(loader_path);
   m->window = gtk_application_window_new(app);
   set_window_icon(m->window);
