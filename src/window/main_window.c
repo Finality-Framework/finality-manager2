@@ -9,6 +9,7 @@
 #include "playlist.h"
 #include "playlists_window.h"
 #include "preferences_window.h"
+#include "updater.h"
 #include "win32_compat.h"
 #include <gio/gio.h>
 #include <glib/gstdio.h>
@@ -662,4 +663,5 @@ void app_activate(GtkApplication *app, gpointer data) {
   populate(m);
   gtk_window_set_child(GTK_WINDOW(m->window), root);
   gtk_window_present(GTK_WINDOW(m->window));
+  updater_check(m);
 }

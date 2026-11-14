@@ -86,17 +86,11 @@ jobs:
 
       - name: Build
         shell: msys2 {0}
-        run: >-
-          make WINDOWS=1
-          WINDOWS_SYSROOT=/ucrt64
-          WINDOWS_PKGCONFIG_LIBDIR=/ucrt64/lib/pkgconfig:/ucrt64/share/pkgconfig
+        run: make WINDOWS=1
 
       - name: Run log-capture regression test
         shell: msys2 {0}
-        run: >-
-          make test-windows
-          WINDOWS_SYSROOT=/ucrt64
-          WINDOWS_PKGCONFIG_LIBDIR=/ucrt64/lib/pkgconfig:/ucrt64/share/pkgconfig
+        run: make test-windows
 
       - name: Upload Windows executable
         uses: actions/upload-artifact@v4

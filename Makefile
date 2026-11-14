@@ -7,23 +7,38 @@ PKG_CONFIG ?= pkg-config
 ifeq ($(WINDOWS),1)
 WINDOWS_TRIPLE ?= x86_64-w64-mingw32
 CC := $(WINDOWS_TRIPLE)-gcc
-PKG_CONFIG := $(WINDOWS_TRIPLE)-pkg-config
-WINDRES := $(WINDOWS_TRIPLE)-windres
+PKG_CONFIG := pkg-config
+# MSYS2 installs the binutils as unprefixed tools (ld, windres) in /ucrt64/bin
+# while several cross toolchains only provide triple-prefixed names. Prefer the
+# triple-prefixed tool when it exists and fall back to the unprefixed one.
+WINDRES ?= $(shell command -v $(WINDOWS_TRIPLE)-windres >/dev/null 2>&1 && echo $(WINDOWS_TRIPLE)-windres || echo windres)
+WINDOWS_LD ?= $(shell command -v $(WINDOWS_TRIPLE)-ld >/dev/null 2>&1 && echo $(WINDOWS_TRIPLE)-ld || echo ld)
 EXE_SUFFIX := .exe
-WINDOWS_LD := $(WINDOWS_TRIPLE)-ld
 PLATFORM_LDFLAGS := -mwindows
 WINDOWS_EXTRA_LIBS := -lshell32 -lole32
 
 # quasi-msys2 keeps the UCRT64 GTK packages in a relocatable sysroot. Use host
 # pkg-config with an explicit target metadata path; the system cross wrapper may
 # have a different compiled-in pkg-config search path.
+#
+# Native MSYS2/MinGW installations already expose correct absolute paths (their
+# .pc files use prefix=/ucrt64), so no sysroot must be applied there. Only set
+# the sysroot when the quasi-msys2 tree actually exists, unless the caller
+# explicitly overrides WINDOWS_SYSROOT.
 QUASI_MSYS2_ROOT ?= $(HOME)/quasi-msys2/root
 QUASI_MSYS2_PREFIX ?= ucrt64
+ifneq ($(wildcard $(QUASI_MSYS2_ROOT)/$(QUASI_MSYS2_PREFIX)),)
 WINDOWS_SYSROOT ?= $(QUASI_MSYS2_ROOT)
-WINDOWS_PKGCONFIG_LIBDIR ?= $(WINDOWS_SYSROOT)/$(QUASI_MSYS2_PREFIX)/lib/pkgconfig:$(WINDOWS_SYSROOT)/$(QUASI_MSYS2_PREFIX)/share/pkgconfig
-PKG_CONFIG := pkg-config
+else
+WINDOWS_SYSROOT ?=
+endif
+WINDOWS_PKGCONFIG_LIBDIR ?= $(if $(WINDOWS_SYSROOT),$(WINDOWS_SYSROOT)/$(QUASI_MSYS2_PREFIX)/lib/pkgconfig:$(WINDOWS_SYSROOT)/$(QUASI_MSYS2_PREFIX)/share/pkgconfig)
+ifneq ($(WINDOWS_SYSROOT),)
 export PKG_CONFIG_SYSROOT_DIR := $(WINDOWS_SYSROOT)
+endif
+ifneq ($(WINDOWS_PKGCONFIG_LIBDIR),)
 export PKG_CONFIG_LIBDIR := $(WINDOWS_PKGCONFIG_LIBDIR)
+endif
 else
 EXE_SUFFIX :=
 WINDOWS_LD := ld
@@ -66,11 +81,14 @@ WINDOW_SOURCES := src/window/main_window.c \
 	src/window/playlists_window.c src/window/preferences_window.c \
 	src/window/about_window.c src/window/logging_window.c
 SOURCES := src/main.c src/app.c src/i18n.c src/config.c src/string_util.c \
-	src/mods.c src/playlist.c src/loader_jar.c src/win32_compat.c $(WINDOW_SOURCES)
+	src/mods.c src/playlist.c src/loader_jar.c src/updater.c \
+	src/win32_compat.c $(WINDOW_SOURCES)
 WINDOW_HEADERS := src/window/main_window.h \
 	src/window/playlists_window.h src/window/preferences_window.h \
 	src/window/about_window.h src/window/logging_window.h
 FRAMEWORK_VERSION ?= $(shell cat ../VERSION 2>/dev/null || echo 1.0.0)
+APP_VERSION ?= $(FRAMEWORK_VERSION)
+VERSION_DEFINE := -DAPP_VERSION=\"$(APP_VERSION)\"
 LOADER_VERSION ?= $(FRAMEWORK_VERSION)
 LOADER_JAR ?= res/finality-loader-$(LOADER_VERSION).jar
 LOADER_OBJ := $(PLATFORM_BUILD_DIR)/loader.o
@@ -131,7 +149,6 @@ vendor-windows:
 
 # Build a Windows installer from the self-contained bundle with NSIS.  Needs
 # the `makensis` tool (nsis package).  Output: build/windows/Finality-Manager-Setup.exe
-APP_VERSION ?= $(shell cat ../VERSION 2>/dev/null || echo 1.0.0)
 NSIS ?= makensis
 NSIS_SCRIPT ?= installer/finality-manager.nsi
 NSIS_OUTFILE ?= build/windows/Finality-Manager-Setup.exe
@@ -167,15 +184,15 @@ $(PLATFORM_BUILD_DIR)/zh-CN-properties.o: src/zh-CN.properties
 
 compile-commands:
 	@mkdir -p $(PLATFORM_BUILD_DIR)
-	@printf '[{"directory":"%s","command":"%s %s %s %s -o %s %s %s %s %s %s %s","file":"%s/src/main.c"}]\n' \
-		"$(CURDIR)" "$(CC)" "$(CFLAGS)" "$(INCLUDES)" "$(GTK_CFLAGS)" "$(TARGET)" "$(SOURCES)" "$(LOADER_OBJ)" "$(I18N_OBJS)" "$(ASSET_OBJS)" "$(ICON_OBJ)" "$(GTK_LIBS) $(WINDOWS_EXTRA_LIBS)" "$(CURDIR)" > compile_commands.json
+	@printf '[{"directory":"%s","command":"%s %s %s %s %s -o %s %s %s %s %s %s %s","file":"%s/src/main.c"}]\n' \
+		"$(CURDIR)" "$(CC)" "$(CFLAGS)" "$(INCLUDES)" "$(GTK_CFLAGS)" "$(VERSION_DEFINE)" "$(TARGET)" "$(SOURCES)" "$(LOADER_OBJ)" "$(I18N_OBJS)" "$(ASSET_OBJS)" "$(ICON_OBJ)" "$(GTK_LIBS) $(WINDOWS_EXTRA_LIBS)" "$(CURDIR)" > compile_commands.json
 
 $(TARGET): $(SOURCES) src/app.h src/i18n.h src/config.h src/app_types.h \
 	src/mods.h src/playlist.h src/string_util.h src/win32_compat.h \
-	$(WINDOW_HEADERS) \
+	src/updater.h src/version.h $(WINDOW_HEADERS) \
 	$(LOADER_OBJ) $(I18N_OBJS) $(ASSET_OBJS) $(ICON_OBJ)
 	mkdir -p $(PLATFORM_BUILD_DIR)
-	$(CC) $(CFLAGS) $(INCLUDES) $(GTK_CFLAGS) $(SOURCES) $(LOADER_OBJ) $(I18N_OBJS) $(ASSET_OBJS) $(ICON_OBJ) -o $@ $(LDFLAGS) $(PLATFORM_LDFLAGS) $(GTK_LIBS) $(WINDOWS_EXTRA_LIBS) $(if $(filter 1,$(WINDOWS)),,-s)
+	$(CC) $(CFLAGS) $(INCLUDES) $(GTK_CFLAGS) $(VERSION_DEFINE) $(SOURCES) $(LOADER_OBJ) $(I18N_OBJS) $(ASSET_OBJS) $(ICON_OBJ) -o $@ $(LDFLAGS) $(PLATFORM_LDFLAGS) $(GTK_LIBS) $(WINDOWS_EXTRA_LIBS) $(if $(filter 1,$(WINDOWS)),,-s)
 
 $(PLATFORM_BUILD_DIR)/aoh3.o: res/aoh3.png
 	mkdir -p $(PLATFORM_BUILD_DIR)

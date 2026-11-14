@@ -2,3 +2,4 @@ build
 build-windows
 compile_commands.json
 .cache
+.finality-manager.properties

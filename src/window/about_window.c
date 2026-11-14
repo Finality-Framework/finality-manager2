@@ -1,6 +1,7 @@
 #include "about_window.h"
 #include "app.h"
 #include "i18n.h"
+#include "version.h"
 #include <gtk/gtk.h>
 
 void about_window_open(Manager *m) {
@@ -18,7 +19,9 @@ void about_window_open(Manager *m) {
   gtk_widget_set_margin_end(box, 28);
   GtkWidget *name = gtk_label_new(i18n("about.name"));
   gtk_widget_add_css_class(name, "title-1");
-  GtkWidget *version = gtk_label_new(i18n("about.version"));
+  char *version_text = g_strdup_printf(i18n("about.version"), APP_VERSION);
+  GtkWidget *version = gtk_label_new(version_text);
+  g_free(version_text);
   GtkWidget *copyright = gtk_label_new("Copyright 2026 Team Rainfall");
   gtk_widget_add_css_class(copyright, "dim-label");
   GtkWidget *close = gtk_button_new_with_label(i18n("button.close"));

@@ -74,9 +74,7 @@ jobs:
       - name: Build installer
         shell: msys2 {0}
         run: |
-          make nsis APP_VERSION=${{ steps.version.outputs.version }} \
-            WINDOWS_SYSROOT=/ucrt64 \
-            WINDOWS_PKGCONFIG_LIBDIR=/ucrt64/lib/pkgconfig:/ucrt64/share/pkgconfig
+          make nsis APP_VERSION=${{ steps.version.outputs.version }}
 
       - name: Upload installer artifact
         uses: actions/upload-artifact@v4
